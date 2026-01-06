@@ -1,0 +1,60 @@
+name: Discord webhook on push
+
+on:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  notify-discord:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord webhook
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          AUTHOR: ${{ github.actor }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "Missing secret DISCORD_WEBHOOK_URL"
+            exit 1
+          fi
+
+          esc () {
+            echo "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])'
+          }
+
+          raw_repo_name="${REPO#*/}"
+          repo_name="$(esc "$raw_repo_name")"
+          branch="$(esc "$BRANCH")"
+          msg="$(esc "$COMMIT_MESSAGE")"
+          url="$(esc "$COMMIT_URL")"
+          author="$(esc "$AUTHOR")"
+
+          payload=$(cat <<EOF
+          {
+            "content": null,
+            "embeds": [
+              {
+                "title": "Novo push em $repo_name",
+                "url": "$url",
+                "color": 5793266,
+                "fields": [
+                  { "name": "Branch", "value": "$branch", "inline": true },
+                  { "name": "Autor", "value": "$author", "inline": true },
+                  { "name": "Commit", "value": "$url", "inline": false },
+                  { "name": "Mensagem", "value": "$msg", "inline": false }
+                ]
+              }
+            ]
+          }
+          EOF
+          )
+
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "$DISCORD_WEBHOOK_URL"
